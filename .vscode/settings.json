@@ -1,3 +1,9 @@
 {
-  "workbench.colorTheme": "freeCodeCamp Dark Theme"
+  "workbench.colorTheme": "Default Dark Modern",
+  "python.languageServer": "Pylance",
+  "python.analysis.diagnosticSeverityOverrides": {
+    "reportShadowedImports": "none",
+    "reportMissingModuleSource": "none"
+  },
+  "python.analysis.typeCheckingMode": "off"
 }

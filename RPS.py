@@ -1,11 +1,29 @@
 import random
 import itertools
 
-def player(prev_play):
+def player(prev_play: str) -> str:
+    """Plays rock paper scissors, called by main.py
+
+    Args:
+        prev_play (str): A string representing the opponent's last play
+
+    Returns:
+        str: Move to play
+    """
     return markov(prev_play)
 
 class MarkovChain:
-    def __init__(self, length, state_possibilities, result_possibilities, decay=0.):
+    """Uses a Markov Chain to predict a system's state"""
+    
+    def __init__(self, length: int, state_possibilities: list[str], result_possibilities: list[str], decay=0.):
+        """Initialized a Markov Chain
+
+        Args:
+            length (int): Number of previous states to combine for predictions
+            state_possibilities (list[str]): A list of possible states
+            result_possibilities (list[str]): A list of all possible results
+            decay (float, optional): How much to lerp transition probabilities to uniform per update. Defaults to 0..
+        """        
         self.length = length
         self.decay = decay
         self.states = []
@@ -19,13 +37,23 @@ class MarkovChain:
             self.transition_matrix[state_chain]['num_obs'] = 0
 
         
-    def update(self, state, result):
-        self.states.append(state)
+    def update(self, state: str, result: str) -> (int | None):
+        """Update the transition probabilities with new data
 
+        Args:
+            state (str): State of the system
+            result (str): The result following the given state
+
+        Returns:
+            Optional[int]: -1 if there is not enough data to form a combined state of required length
+        """        
+        self.states.append(state)
+        
         if len(self.states) < self.length:
             return -1
-        state_chain = ''.join(self.states[-self.length:])
-        probs = self.transition_matrix[state_chain]
+        
+        state_chain = ''.join(self.states[-self.length:]) # combine states
+        probs = self.transition_matrix[state_chain] # shorthand
         
         # update transition matrix probabilities
         for key in list(probs.keys())[:-1]: # exclude num_obs
@@ -46,18 +74,39 @@ class MarkovChain:
                 if key != 'num_obs':
                     probs[key] += (1.0/num_probs - probs[key])*self.decay
         
-    def _probs_without_obs(self, probs):
+    def _probs_without_obs(self, probs: dict[str, float]) -> dict[str, float]:
+        """Removes 'num_obs' dict entry from dict of transition probabilities"""
         return {i:probs[i] for i in probs if i != 'num_obs'}
     
-    def get_probs(self, state_chain):
+    def get_probs(self, state_chain: str) -> dict[str, float]:
+        """Returns probabilities for a given combined state"""
         return self._probs_without_obs(self.transition_matrix[state_chain])
     
-    def predict_max(self, state_chain):
+    def predict_max(self, state_chain: str) -> tuple[str, float]:
+        """Predicts most likely state
+
+        Args:
+            state_chain (str): Combined previous states
+
+        Returns:
+            str: prediction,
+            float: estimated probability
+        """
         probs = self._probs_without_obs(self.transition_matrix[state_chain])
-        prediction = max(probs, key=probs.get)
+        prediction = max(probs, key=probs.get) # type: ignore
         return prediction, probs[prediction]
     
-    def predict_chance(self, state_chain, spice=0.):
+    def predict_chance(self, state_chain: str, spice=0.) -> tuple[str, float]:
+        """Selects state from possible resulting states based on probability
+
+        Args:
+            state_chain (str): Combined previous states
+            spice (float): Amount to lerp probabilities to their average
+
+        Returns:
+            str: prediction,
+            float: estimated probability
+        """
         probs = self._probs_without_obs(self.transition_matrix[state_chain])
         weights = list(probs.values())
         
@@ -68,33 +117,64 @@ class MarkovChain:
         prediction = random.choices(list(probs.keys()), weights=weights)[0]
         return prediction, probs[prediction]
     
-    def chain_from_prev_state(self, prev_state):
+    def chain_from_prev_state(self, prev_state: str) -> str:
+        """Combines previous state with previous states to create combined state"""
         return ''.join(self.states[-self.length:][1:])+prev_state
     
-    def get_next_probs(self, prev_state):
+    def get_next_probs(self, prev_state: str) -> dict[str, float]:
         state_chain = self.chain_from_prev_state(prev_state)
         return self.get_probs(state_chain)
     
-    def predict_max_next(self, prev_state):
+    def predict_max_next(self, prev_state: str) -> tuple[str, float]:
+        """Predicts most likely state
+
+        Args:
+            prev_state (str): Previous state
+
+        Returns:
+            str: prediction,
+            float: estimated probability
+        """
         state_chain = self.chain_from_prev_state(prev_state)
         return self.predict_max(state_chain)
     
-    def predict_chance_next(self, prev_state, spice=0.):
+    def predict_chance_next(self, prev_state: str, spice=0.) -> tuple[str, float]:
+        """Selects state from possible resulting states based on probability
+
+        Args:
+            prev_state (str): Previous state
+            spice (float): Amount to lerp probabilities to their average
+
+        Returns:
+            str: prediction,
+            float: estimated probability
+        """
         state_chain = self.chain_from_prev_state(prev_state)
         return self.predict_chance(state_chain, spice=spice)
 
 
-IDEAL_RESPONSE = {'P': 'S', 'R': 'P', 'S': 'R'}
-SPICE = -2.0
-SPICE_BETWEEN_CHAINS = -4.0
+IDEAL_RESPONSE = {'P': 'S', 'R': 'P', 'S': 'R'} # maps opponent play to ideal player play
+SPICE = -2.0 # UNUSED. amount to lerp transition probabilities to their average
+SPICE_BETWEEN_CHAINS = -4.0 # UNUSED. amount to lerp probabilities from different markov chain predictions to their average
 CHAIN_LENGTHS = [1, 2, 3]
 STATE_POSSIBILITIES = ['RR', 'RP', 'RS',
                        'PR', 'PP', 'PS',
-                       'SR', 'SP', 'SS']
-PLAY_OPTIONS = ['R', 'P', 'S']
-DECAY = 0.0
+                       'SR', 'SP', 'SS'] # all possible pairs of plays
+PLAY_OPTIONS = ['R', 'P', 'S'] # possible plays
+DECAY = 0.0 # amount to regress probabilities to uniform per update
 
-def markov(prev_opp_play: str, chains: list[MarkovChain] = [], prev_play=[''], prev_state=[''], prev_player=[0]):
+def markov(prev_opp_play: str, chains: list[MarkovChain] = [], prev_play: list[str]=[''], prev_state: list[str]=['']) -> str:
+    """Plays the game using markov chain predictions
+
+    Args:
+        prev_opp_play (str): Opponent's previous move
+        chains (list[MarkovChain], DO NOT SET): Stores Markov Chains between moves.
+        prev_play (list, DO NOT SET): Single element list to store player's previous play.
+        prev_state (list, DO NOT SET): Single element list to store game's previous state.
+
+    Returns:
+        str: Move to play
+    """    
     # first moves
     if prev_opp_play == '':
         chains.clear()
@@ -110,96 +190,30 @@ def markov(prev_opp_play: str, chains: list[MarkovChain] = [], prev_play=[''], p
         guess = random.choice(['R', 'P', 'S'])
         prev_play[0] = guess
         return guess
-        
+    
+    # update markov chains and make predictions
     predictions = []
     probs = []
     for chain in chains:
         code = chain.update(prev_state[0], prev_opp_play)
-        if code and code < 0: # make sure markov chain has enough data
+        
+        if code == -1: # make sure markov chain has enough data
             predictions.append(random.choice(PLAY_OPTIONS))
             probs.append(1.0/len(PLAY_OPTIONS))
             continue
+        
         prediction, prob = chain.predict_max_next(prev_opp_play+prev_play[0])
         predictions.append(prediction)
         probs.append(prob)
         
-    prev_state[0] = prev_opp_play + prev_play[0]
-    
+    # get most likely outcome from predictions
     max_prob_index = probs.index(max(probs))
     prediction = predictions[max_prob_index]
     
     guess = IDEAL_RESPONSE[prediction]
     
     # update prev vars
+    prev_state[0] = prev_opp_play + prev_play[0]
     prev_play[0] = guess
     
-    return guess
-
-MAX_CHAIN_LEN = 250
-
-def markov_manual(prev_play, self_history=[], opponent_history=[]):
-    # first moves
-    if prev_play == '':
-        self_history.clear()
-        opponent_history.clear()
-        guess = random.choice(['R', 'P', 'S'])
-        self_history.append(guess)
-        return guess
-    
-    if len(opponent_history) <= 2:
-        opponent_history.append(prev_play)
-        guess = random.choice(['R', 'P', 'S'])
-        self_history.append(guess)
-        return guess
-    opponent_history.append(prev_play)
-    #print(prev_play)
-    
-    # record play state history
-    prev_states = []
-    self_totals = {'R': 0, 'P': 0, 'S': 0}
-    for i in range(len(self_history)-2):
-        self_totals[self_history[i]] += 1
-        most_frequent = max(self_totals, key=self_totals.get)
-        prev_states.append(opponent_history[i-1]+self_history[i-1] + opponent_history[i]+self_history[i] + most_frequent)
-    
-    if len(prev_states) > MAX_CHAIN_LEN:
-        prev_states = prev_states[-MAX_CHAIN_LEN:]
-    
-    # initialize probabilities
-    probs = {}
-    for state in prev_states:
-        probs[state] = {'R': 0, 'P': 0, 'S': 0}
-    
-    # total up responses
-    for i in range(len(prev_states)):
-        response = opponent_history[i+1]
-        probs[prev_states[i]][response] += 1
-        
-    #print(self_history, opponent_history, probs)
-    
-    # normalize to probabilities
-    for state, response_probs in probs.items():
-        total = response_probs['R'] + response_probs['P'] + response_probs['S']
-        response_probs['R'] /= total
-        response_probs['P'] /= total
-        response_probs['S'] /= total
-    
-    prev_state = prev_states[-1]
-    predict_probs = list(probs[prev_state].values())
-    # add spice
-    avg = (predict_probs[0]+predict_probs[1]+predict_probs[2])/3
-    predict_probs[0] += (avg-predict_probs[0])*SPICE
-    predict_probs[1] += (avg-predict_probs[1])*SPICE
-    predict_probs[2] += (avg-predict_probs[2])*SPICE
-    
-    prediction = random.choices(list(probs[prev_state].keys()), weights=predict_probs)[0]
-    #print(probs[prev_state], end=' - ')
-    guess = IDEAL_RESPONSE[prediction]
-    self_history.append(guess)
-    if len(self_history) == 999:
-        for key, value in probs.items():
-            value['R'] = round(value['R'], 2)
-            value['P'] = round(value['P'], 2)
-            value['S'] = round(value['S'], 2)
-        #print('\n', probs)
     return guess
